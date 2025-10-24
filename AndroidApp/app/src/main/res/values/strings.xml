@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">YOLOv5</string>
+    <string name="image_view">Image View</string>
+    <string name="detect">Detect</string>
+    <string name="inference_mobile">Inference on device...</string>
+    <string name="inference_cloud">Inference on cloud...</string>
+    <string name="toggle_mobile">Mobile</string>
+    <string name="toggle_cloud">Cloud</string>
+    <string name="restart">Restart</string>
+    <string name="select">Select</string>
+    <string name="live">Live</string>
+</resources>
