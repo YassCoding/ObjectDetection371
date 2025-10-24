@@ -22,7 +22,7 @@ def load_model(weights, device):
 def detect(image_path,
            weights):
     
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device=torch.device("mps" if torch.cuda.is_available() else "cpu") # replaced cuda with mps as on apple silicon chip
     print("Inference on device: ", device)
     # =========== Load Model ===========
     print(f"Loading model from {weights}")
