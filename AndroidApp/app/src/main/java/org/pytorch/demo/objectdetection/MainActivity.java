@@ -26,6 +26,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.RadioButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -41,6 +42,8 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -63,13 +66,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends AppCompatActivity implements Runnable {
-    private String URL = "http://192.168.8.160:8008/predict"; // Change this address to the address of your cloud server
+    private String URL = "http://128.180.190.45:8008/predict"; // Change this address to the address of your cloud server
     private int mImageIndex = 0;
     private String[] mTestImages = {"test1.png", "test2.jpg", "test3.png"};
     private ImageView mImageView;
@@ -81,6 +85,11 @@ public class MainActivity extends AppCompatActivity implements Runnable {
     private Module mModule = null;
     private float mImgScaleX, mImgScaleY, mIvScaleX, mIvScaleY, mStartX, mStartY;
     private boolean useCloud = false;
+
+    // Measuring and displaying execution time
+    private long startTime = -1;
+    private long endTime = -1;
+    TextView mInferenceTimeView;
 
     public static String assetFilePath(Context context, String assetName) throws IOException {
         File file = new File(context.getFilesDir(), assetName);
@@ -126,6 +135,7 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         mImageView.setImageBitmap(mBitmap);
         mResultView = findViewById(R.id.resultView);
         mResultView.setVisibility(View.INVISIBLE);
+        mInferenceTimeView = findViewById(R.id.inferenceTimeView);
 
         final Button buttonTest = findViewById(R.id.testButton);
         buttonTest.setText(("Test Image 1/3"));
@@ -181,6 +191,9 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
         mButtonDetect.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                mInferenceTimeView.setVisibility(View.INVISIBLE);
+                endTime = -1;
+                startTime = System.nanoTime();
                 mButtonDetect.setEnabled(false);
                 mProgressBar.setVisibility(ProgressBar.VISIBLE);
                 if (mRadioMobile.isChecked()) {
@@ -276,18 +289,41 @@ public class MainActivity extends AppCompatActivity implements Runnable {
                 mResultView.setResults(results);
                 mResultView.invalidate();
                 mResultView.setVisibility(View.VISIBLE);
+
+                endTime = System.nanoTime();
+                mInferenceTimeView.setText((String.format("Inference Time: %d ms", (endTime - startTime)/1000000)));
+                mInferenceTimeView.setVisibility(View.VISIBLE);
             });
         }
         else {
             Log.d("Inference Mode","Cloud inference");
             ArrayList<Result> results = new ArrayList<>();
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            mBitmap.compress(Bitmap.CompressFormat.JPEG, 100, baos);
+            byte[] iBytes = baos.toByteArray();
+            String b64Image = Base64.encodeToString(iBytes, Base64.DEFAULT);
+
             StringRequest request = new StringRequest(Request.Method.POST, URL, new Response.Listener<String>() {
                 @Override
                 public void onResponse(String response) { // Callback function that handles the response
                     Log.d("Cloud Inference", response.toString());
+                    Gson boundResponse = new Gson();
+                    Type ALType = new TypeToken<ArrayList<Map<String, Object>>>() {}.getType();
+                    ArrayList<Map<String, Object>> rList = boundResponse.fromJson(response, ALType);
 
                     // Below is an example of adding a bounding box to the results.
                     // results.add(boxToResult(10, 10, 208, 208, 0, 0.5f));
+                    int cls = 0;
+                    Float confidence = Float.valueOf(0);
+                    ArrayList<Double> bb = new ArrayList<Double>();
+
+                    for(Map<String, Object> result: rList){
+                        cls = ((Double) result.get("cls")).intValue();
+                        confidence = ((Double) result.get("score")).floatValue();
+                        bb = (ArrayList<Double>) result.get("box");
+                        results.add(boxToResult(bb.get(0).floatValue(), bb.get(1).floatValue(), bb.get(2).floatValue(), bb.get(3).floatValue(), cls, confidence));
+                    }
 
                     runOnUiThread(() -> {
                         mButtonDetect.setEnabled(true);
@@ -305,10 +341,20 @@ public class MainActivity extends AppCompatActivity implements Runnable {
                 }
             }) {
                 @Override
-                protected Map<String, String> getParams() throws AuthFailureError { // Function that 
-                    Map<String, String> parameters = new HashMap<String, String>();
-                    parameters.put("data", "Hello Server!");
-                    return parameters;
+                public byte[] getBody() throws AuthFailureError {
+                    try {
+                        JSONObject jsonBody = new JSONObject();
+                        jsonBody.put("image", b64Image);
+                        return jsonBody.toString().getBytes("utf-8");
+                    } catch (Exception e) {
+                        Log.e("Cloud Inference", "Failed to create JSON body", e);
+                        return null;
+                    }
+                }
+
+                @Override
+                public String getBodyContentType() {
+                    return "application/json; charset=utf-8";
                 }
             };
             RequestQueue rQueue = Volley.newRequestQueue(MainActivity.this);
