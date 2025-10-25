@@ -332,6 +332,10 @@ public class MainActivity extends AppCompatActivity implements Runnable {
                         mResultView.setResults(results);
                         mResultView.invalidate();
                         mResultView.setVisibility(View.VISIBLE);
+
+                        endTime = System.nanoTime();
+                        mInferenceTimeView.setText((String.format("Inference Time: %d ms", (endTime - startTime)/1000000)));
+                        mInferenceTimeView.setVisibility(View.VISIBLE);
                     });
                 }
             }, new Response.ErrorListener() {
